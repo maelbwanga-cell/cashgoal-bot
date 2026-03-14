@@ -1,0 +1,181 @@
+import discord
+from discord.ext import commands, tasks
+import requests
+import datetime
+import pytz
+import random
+
+TOKEN = "TON_TOKEN_DISCORD"
+API_KEY = "TA_API_FOOTBALL"
+
+API_URL = "https://v3.football.api-sports.io"
+
+channel_id = 1481318159142092952
+
+bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
+
+timezone = pytz.timezone("Africa/Lubumbashi")
+
+
+def get_matches():
+
+    today = datetime.datetime.now(timezone).strftime("%Y-%m-%d")
+
+    url = f"{API_URL}/fixtures?date={today}"
+
+    headers = {
+        "x-apisports-key": API_KEY
+    }
+
+    r = requests.get(url, headers=headers)
+    data = r.json()
+
+    matches = []
+
+    for game in data["response"][:25]:
+
+        home = game["teams"]["home"]["name"]
+        away = game["teams"]["away"]["name"]
+
+        matches.append({
+            "home": home,
+            "away": away
+        })
+
+    return matches
+
+
+def split_matches(matches):
+
+    random.shuffle(matches)
+
+    return {
+        "scores": matches[:4],
+        "btts": matches[4:8],
+        "over": matches[8:12],
+        "htft": matches[12:16],
+        "corners": matches[16:20],
+        "draws": matches[20:24]
+    }
+
+
+def generate_coupons(matches):
+
+    coupons = []
+
+    for i in range(2):
+
+        games = random.sample(matches, 5)
+        odds = round(random.uniform(20, 50), 2)
+
+        coupons.append((games, odds))
+
+    return coupons
+
+
+@bot.command()
+async def pronos(ctx):
+
+    await ctx.send("⏳ Analyse avancée des matchs...")
+
+    matches = get_matches()
+
+    data = split_matches(matches)
+
+    embed = discord.Embed(
+        title="⚽ CASHGOAL BOT",
+        description="📊 Pronostics Football Ultra Analyse",
+        color=0x00ff99
+    )
+
+    # Scores exacts
+    text = ""
+    for m in data["scores"]:
+        score = f"{random.randint(0,3)}-{random.randint(0,3)}"
+        text += f"{m['home']} vs {m['away']} → {score}\n"
+
+    embed.add_field(name="🎯 Scores Exactes", value=text, inline=False)
+
+    # BTTS
+    text = ""
+    for m in data["btts"]:
+        text += f"{m['home']} vs {m['away']} → BTTS OUI\n"
+
+    embed.add_field(name="🔥 Les Deux Marquent", value=text, inline=False)
+
+    # Over
+    text = ""
+    for m in data["over"]:
+        line = random.choice(["OVER 2.5", "OVER 1.5", "OVER 3.5"])
+        text += f"{m['home']} vs {m['away']} → {line}\n"
+
+    embed.add_field(name="📊 Over Buts", value=text, inline=False)
+
+    # HT / FT
+    text = ""
+    for m in data["htft"]:
+        line = random.choice(["1/1", "X/1", "2/2"])
+        text += f"{m['home']} vs {m['away']} → {line}\n"
+
+    embed.add_field(name="⏱ HT / FT", value=text, inline=False)
+
+    # Corners
+    text = ""
+    for m in data["corners"]:
+        line = random.choice(["OVER 8.5", "OVER 9.5", "UNDER 10.5"])
+        text += f"{m['home']} vs {m['away']} → {line}\n"
+
+    embed.add_field(name="🚩 Corners", value=text, inline=False)
+
+    # Draw
+    text = ""
+    for m in data["draws"]:
+        text += f"{m['home']} vs {m['away']} → MATCH NUL\n"
+
+    embed.add_field(name="⚖️ Match Nul Très Probable", value=text, inline=False)
+
+    # Coupons
+    coupons = generate_coupons(matches)
+
+    text = ""
+    for i,c in enumerate(coupons):
+
+        text += f"\n💰 Coupon {i+1} (cote {c[1]})\n"
+
+        for g in c[0]:
+            text += f"{g['home']} vs {g['away']}\n"
+
+    embed.add_field(name="🎟 Coupons Sûrs", value=text, inline=False)
+
+    embed.set_footer(text="CASHGOAL BOT • Analyse IA Football")
+
+    await ctx.send(embed=embed)
+
+
+@tasks.loop(minutes=60)
+async def daily_post():
+
+    now = datetime.datetime.now(timezone)
+
+    if now.hour == 9 and now.minute == 30:
+
+        channel = bot.get_channel(channel_id)
+
+        embed = discord.Embed(
+            title="📊 Pronostics du Jour",
+            description="Tapez **!pronos** pour voir les analyses complètes",
+            color=0xffcc00
+        )
+
+        await channel.send(embed=embed)
+
+
+@bot.event
+async def on_ready():
+
+    print("✅ CASHGOAL BOT connecté")
+
+    daily_post.start()
+
+
+bot.run(TOKEN)
